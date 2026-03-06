@@ -20,7 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-GEMINI_URL = "https://gemini.google.com/app/b61306bac4a2c500"
+GEMINI_URL = "https://gemini.google.com/app/"
 
 
 # ---------------- CHROME OPTIONS ----------------
