@@ -20,7 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-GEMINI_URL = "https://gemini.google.com/app/"
+GEMINI_URL = "https://gemini.google.com/app"
 
 
 # ---------------- CHROME OPTIONS ----------------
@@ -31,6 +31,13 @@ options.add_argument("--headless=new")
 options.add_argument("--disable-gpu")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
+
+# EC2 stability
+options.add_argument("--disable-extensions")
+options.add_argument("--disable-infobars")
+options.add_argument("--disable-background-networking")
+options.add_argument("--disable-sync")
+options.add_argument("--window-size=1920,1080")
 
 options.page_load_strategy = "eager"
 
@@ -43,7 +50,9 @@ options.add_experimental_option("prefs", prefs)
 logger.info("Starting Chrome driver")
 
 driver = webdriver.Chrome(options=options)
-wait = WebDriverWait(driver, 30)
+
+# increased wait for EC2
+wait = WebDriverWait(driver, 120)
 
 logger.info("Opening Gemini page")
 
@@ -83,27 +92,36 @@ def extract_complete_json(text):
     return None
 
 
-# ---------------- RESPONSE WAIT ----------------
-def wait_for_complete_response(element):
+# ---------------- RESPONSE WAIT (DYNAMIC) ----------------
+def wait_for_complete_response(element, timeout=120):
 
-    logger.info("Waiting for Gemini streaming to finish")
+    logger.info("Waiting for Gemini streaming response")
+
+    start_time = time.time()
+    last_change = time.time()
 
     prev_text = ""
 
-    for _ in range(30):
+    while True:
 
         current_text = element.text.strip()
 
-        if current_text == prev_text and len(current_text) > 50:
-            logger.info("Gemini response stabilized")
+        # detect change
+        if current_text != prev_text:
+            prev_text = current_text
+            last_change = time.time()
+
+        # if text stable for 3 seconds -> finished
+        if time.time() - last_change > 3 and len(current_text) > 50:
+            logger.info("Gemini response completed")
             return current_text
 
-        prev_text = current_text
+        # max timeout
+        if time.time() - start_time > timeout:
+            logger.warning("Max timeout reached")
+            return current_text
+
         time.sleep(1)
-
-    logger.warning("Response stabilization timeout")
-
-    return element.text
 
 
 # ---------------- MAIN SERVICE ----------------
@@ -161,7 +179,7 @@ Return ONLY JSON object.
         logger.info("Waiting for Gemini response")
 
         wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "div.markdown.markdown-main-panel"))
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.markdown.markdown-main-panel"))
         )
 
         response_elements = driver.find_elements(
